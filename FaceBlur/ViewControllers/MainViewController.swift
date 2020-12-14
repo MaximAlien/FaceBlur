@@ -56,20 +56,20 @@ final class MainViewController: UIViewController {
                 captureSession.addInput(deviceInput)
             }
             
-            let output = AVCaptureVideoDataOutput()
-            output.videoSettings = [
+            let videoDataOutput = AVCaptureVideoDataOutput()
+            videoDataOutput.videoSettings = [
                 String(kCVPixelBufferPixelFormatTypeKey) : Int(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
             ]
             
-            output.alwaysDiscardsLateVideoFrames = true
+            videoDataOutput.alwaysDiscardsLateVideoFrames = true
             
-            if captureSession.canAddOutput(output) {
-                captureSession.addOutput(output)
+            if captureSession.canAddOutput(videoDataOutput) {
+                captureSession.addOutput(videoDataOutput)
             }
             
             captureSession.commitConfiguration()
-            let queue = DispatchQueue(label: "output.queue")
-            output.setSampleBufferDelegate(self, queue: queue)
+            let queue = DispatchQueue(label: "com.capture.session.queue")
+            videoDataOutput.setSampleBufferDelegate(self, queue: queue)
             
             captureSession.startRunning()
         } catch {
