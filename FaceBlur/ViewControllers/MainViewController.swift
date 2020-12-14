@@ -13,23 +13,15 @@ import Vision
 final class MainViewController: UIViewController {
     
     let captureSession = AVCaptureSession()
-    
     let faceLandmarksRequest = VNDetectFaceLandmarksRequest()
     let faceLandmarksDetectionHandler = VNSequenceRequestHandler()
-    
-    let faceRectanglesRequest = VNDetectFaceRectanglesRequest()
-    let faceRectanglesDetectionHandler = VNSequenceRequestHandler()
-    
-    lazy var previewLayer: AVCaptureVideoPreviewLayer = {
+    lazy var videoPreviewLayer: AVCaptureVideoPreviewLayer = {
         var previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         previewLayer.videoGravity = .resizeAspectFill
         
         return previewLayer
     }()
-    
-    let captureDevice: AVCaptureDevice? = {
-        return AVCaptureDevice.default(AVCaptureDevice.DeviceType.builtInWideAngleCamera, for: AVMediaType.video, position: .front)
-    }()
+    let landmarksLayer = CAShapeLayer()
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -40,17 +32,21 @@ final class MainViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
-        previewLayer.frame = view.bounds
+        videoPreviewLayer.frame = view.bounds
+        landmarksLayer.frame = view.bounds
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
-        view.layer.addSublayer(previewLayer)
+        view.layer.addSublayer(videoPreviewLayer)
+        view.layer.addSublayer(landmarksLayer)
     }
     
     func startSession() {
-        guard let captureDevice = captureDevice else { return }
+        guard let captureDevice = AVCaptureDevice.default(AVCaptureDevice.DeviceType.builtInWideAngleCamera,
+                                                          for: AVMediaType.video,
+                                                          position: .front) else { return }
         
         do {
             let deviceInput = try AVCaptureDeviceInput(device: captureDevice)
@@ -80,6 +76,40 @@ final class MainViewController: UIViewController {
             NSLog("Failed to setup AVCaptureSession with error: \(error.localizedDescription).")
         }
     }
+    
+    // MARK: - Face landmarks detection methods
+    
+    func detectLandmarks(_ image: CIImage) {
+        do {
+            DispatchQueue.main.async {
+                self.landmarksLayer.sublayers?.removeAll()
+            }
+            
+            try faceLandmarksDetectionHandler.perform([faceLandmarksRequest], on: image)
+            
+            guard let results = faceLandmarksRequest.results as? [VNFaceObservation], !results.isEmpty else { return }
+            
+            for result in results {
+                NSLog("Result: \(result)")
+                
+                DispatchQueue.main.async {
+                    let size = CGSize(width: result.boundingBox.width * self.view.bounds.width,
+                                      height: result.boundingBox.height * self.view.bounds.height)
+                    let origin = CGPoint(x: result.boundingBox.minX * self.view.bounds.width,
+                                         y: (1 - result.boundingBox.minY) * self.view.bounds.height - size.height)
+                    
+                    let layer = CAShapeLayer()
+                    layer.frame = CGRect(origin: origin, size: size)
+                    layer.borderColor = UIColor.red.cgColor
+                    layer.borderWidth = 2
+                    
+                    self.landmarksLayer.addSublayer(layer)
+                }
+            }
+        } catch {
+            NSLog("Failed to perform face landmarks request with error: \(error.localizedDescription).")
+        }
+    }
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate methods
@@ -98,38 +128,6 @@ extension MainViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
                                                         attachmentMode: kCMAttachmentMode_ShouldPropagate)
         let image = CIImage(cvImageBuffer: pixelBuffer!, options: imageOptions(attachments as! [String : Any]?))
         
-        detectFace(image.oriented(.leftMirrored))
-    }
-}
-
-// MARK: - Face detection methods
-
-extension MainViewController {
-    
-    func detectFace(_ image: CIImage) {
-        do {
-            try faceRectanglesDetectionHandler.perform([faceRectanglesRequest], on: image)
-            
-            if let results = faceRectanglesRequest.results as? [VNFaceObservation], !results.isEmpty {
-                faceLandmarksRequest.inputFaceObservations = results
-                detectLandmarks(image)
-            }
-        } catch {
-            NSLog("Failed to perform face rectangles request with error: \(error.localizedDescription).")
-        }
-    }
-    
-    func detectLandmarks(_ image: CIImage) {
-        do {
-            try faceLandmarksDetectionHandler.perform([faceLandmarksRequest], on: image)
-            
-            if let results = faceLandmarksRequest.results as? [VNFaceObservation], !results.isEmpty {
-                for result in results {
-                    NSLog("Result: \(result)")
-                }
-            }
-        } catch {
-            NSLog("Failed to perform face landmarks request with error: \(error.localizedDescription).")
-        }
+        detectLandmarks(image.oriented(.leftMirrored))
     }
 }
